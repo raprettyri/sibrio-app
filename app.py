@@ -191,9 +191,9 @@ with center_col:
 
         if file_wisman is not None and file_vhts is not None:
             # 1. Tentukan Nama File Statis
-            file_template = "Template Word Kosong.docx"
-            file_map_wisman = "Mapping Wisman.xlsx"
-            file_map_hotel = "Mapping Hotel.xlsx"
+            file_template = "Template.docx"
+            file_map_wisman = "wisman.xlsx"
+            file_map_hotel = "hotel.xlsx"
             
             # 2. Hitung nama file BRS bulan lalu
             bln_lalu = 12 if BULAN == 1 else BULAN - 1
