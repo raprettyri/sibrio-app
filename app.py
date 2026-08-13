@@ -7,8 +7,14 @@ import io
 import os
 import base64
 
+# --- HELPER FUNCTIONS ---
+def get_image_base64(path):
+    if os.path.exists(path):
+        with open(path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode()
+    return ""
 # --- KONFIGURASI TAMPILAN WEB ---
-st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon="📊", layout="wide")
+st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon=get_image_base64("logosibrio.png"), layout="wide")
 
 # --- INJEKSI CUSTOM CSS ---
 st.markdown("""
