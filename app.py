@@ -141,7 +141,6 @@ with center_col:
     logo_base64 = get_image_base64("logosibrio.png")
     img_html = f'<img src="data:image/jpeg;base64,{logo_base64}" style="width: 85px; flex-shrink: 0; object-fit: contain;">' if logo_base64 else ''
     
-    # HTML dibuat sejajar garis pinggir agar tidak terdeteksi sebagai code block
     html_header = f"""
 <div class="header-container">
     {img_html}
@@ -190,7 +189,7 @@ with center_col:
         PROVINSI = 11 
 
         if file_wisman is not None and file_vhts is not None:
-            # 1. Tentukan Nama File Statis
+            # 1. Tentukan Nama File Statis (DIUPDATE SESUAI PERMINTAAN)
             file_template = "Template.docx"
             file_map_wisman = "wisman.xlsx"
             file_map_hotel = "hotel.xlsx"
