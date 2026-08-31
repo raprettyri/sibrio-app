@@ -239,8 +239,10 @@ with center_col:
 
                         # EKSTRAKSI EXCEL WISMAN
                         wisman_map = pd.read_excel(file_map_wisman)
-                        udara = pd.read_excel(file_wisman, sheet_name="udara mei", header=None)
-                        non_udara = pd.read_excel(file_wisman, sheet_name="non udara mei", header=None)
+                        # Membuat nama sheet otomatis berdasarkan bulan yang dipilih (huruf kecil)
+                        nama_bulan_sheet = get_short_bulan(BULAN).lower()
+                        udara = pd.read_excel(file_wisman, sheet_name=f"udara {nama_bulan_sheet}", header=None)
+                        non_udara = pd.read_excel(file_wisman, sheet_name=f"non udara {nama_bulan_sheet}", header=None)
                         
                         wisman_data = {}
                         for _, row in wisman_map.iterrows():
