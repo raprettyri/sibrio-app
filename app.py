@@ -124,13 +124,20 @@ def get_arah_tren(angka):
     return "peningkatan" if angka > 0 else "penurunan"
 def get_arah_tren_singkat(angka): 
     return "naik" if angka > 0 else "turun"
-def geser_tabel1(data_lama_negara, data_excel_baru):
-    blok_lalu = data_lama_negara[1:9]          
-    statis_jandes = [data_lama_negara[9]]      
-    blok_ini = data_lama_negara[10:14]         
-    bulan_ini = [data_excel_baru]              
-    total_ini = [sum(blok_ini) + data_excel_baru] 
-    return blok_lalu + statis_jandes + blok_ini + bulan_ini + total_ini
+
+# FUNGSI PERGESERAN TABEL YANG SUDAH DINAMIS
+def geser_tabel1(data_lama_negara, data_excel_baru, bulan_sekarang):
+    # Ambil 13 kolom sebelumnya (membuang bulan paling lama), lalu tambahkan data bulan ini
+    array_baru = data_lama_negara[1:14] + [data_excel_baru]
+    
+    # Cari tahu di mana posisi kolom "Jan-Des" berada (Polanya selalu 13 - bulan)
+    idx_jandes = 13 - bulan_sekarang
+    
+    # Total tahun ini adalah jumlah dari kolom setelah "Jan-Des" sampai akhir
+    data_tahun_ini = array_baru[idx_jandes + 1 :]
+    total_ini = sum(data_tahun_ini)
+    
+    return array_baru + [total_ini]
 
 
 # --- KONTEN UTAMA (DI TENGAH LAYAR) ---
@@ -172,50 +179,42 @@ with center_col:
 
     st.write("<br>", unsafe_allow_html=True)
 
-    # --- BARIS 3: UPLOAD FILE EXCEL ---
-    col_up1, col_up2 = st.columns(2)
+    # --- BARIS 3: UPLOAD FILE EXCEL & WORD ---
+    col_up1, col_up2, col_up3 = st.columns(3)
     with col_up1:
         st.markdown('<p class="custom-label">Data Wisman (Excel)</p>', unsafe_allow_html=True)
         file_wisman = st.file_uploader("Wisman", type=["xlsx", "xls"], label_visibility="collapsed")
     with col_up2:
         st.markdown('<p class="custom-label">Data VHTS (Excel)</p>', unsafe_allow_html=True)
         file_vhts = st.file_uploader("VHTS", type=["xlsx", "xls"], label_visibility="collapsed")
+    with col_up3:
+        st.markdown('<p class="custom-label">BRS Bulan Lalu (Word)</p>', unsafe_allow_html=True)
+        file_brs_lama = st.file_uploader("BRS Lama", type=["docx"], label_visibility="collapsed")
 
     st.write("<br>", unsafe_allow_html=True)
 
     # --- TOMBOL GENERATE ---
     if st.button("👇 Generate BRS Sekarang", use_container_width=True):
-        # PROVINSI ACEH
         PROVINSI = 11 
 
-        if file_wisman is not None and file_vhts is not None:
-            # 1. Tentukan Nama File Statis (DIUPDATE SESUAI PERMINTAAN)
+        if file_wisman is not None and file_vhts is not None and file_brs_lama is not None:
             file_template = "Template.docx"
             file_map_wisman = "wisman.xlsx"
             file_map_hotel = "hotel.xlsx"
             
-            # 2. Hitung nama file BRS bulan lalu
-            bln_lalu = 12 if BULAN == 1 else BULAN - 1
-            thn_lalu = TAHUN - 1 if BULAN == 1 else TAHUN
-            file_word_lama = f"BRS_Pariwisata_{bln_lalu}_{thn_lalu}.docx"
-            
-            # 3. Hitung nama file BRS yang akan dibuat
             nama_file_baru = f"BRS_Pariwisata_{BULAN}_{TAHUN}.docx"
             
-            # 4. Validasi ketersediaan file
             if not os.path.exists(file_template):
                 st.error(f"❌ File '{file_template}' tidak ditemukan di folder aplikasi!")
             elif not os.path.exists(file_map_wisman):
                 st.error(f"❌ File '{file_map_wisman}' tidak ditemukan di folder aplikasi!")
             elif not os.path.exists(file_map_hotel):
                 st.error(f"❌ File '{file_map_hotel}' tidak ditemukan di folder aplikasi!")
-            elif not os.path.exists(file_word_lama):
-                st.error(f"❌ File '{file_word_lama}' tidak ditemukan! Pastikan laporan bulan sebelumnya ada di folder yang sama.")
             else:
-                with st.spinner(f'Memproses data dan menggunakan referensi {file_word_lama}...'):
+                with st.spinner('Memproses data dan merangkai dokumen BRS...'):
                     try:
                         # EKSTRAKSI WORD LAMA
-                        doc_lama = docx.Document(file_word_lama)
+                        doc_lama = docx.Document(file_brs_lama)
                         data_word = {"tabel1": {}, "tabel2": {}}
                         
                         tabel1 = doc_lama.tables[0]
@@ -239,7 +238,6 @@ with center_col:
 
                         # EKSTRAKSI EXCEL WISMAN
                         wisman_map = pd.read_excel(file_map_wisman)
-                        # Membuat nama sheet otomatis berdasarkan bulan yang dipilih (huruf kecil)
                         nama_bulan_sheet = get_short_bulan(BULAN).lower()
                         udara = pd.read_excel(file_wisman, sheet_name=f"udara {nama_bulan_sheet}", header=None)
                         non_udara = pd.read_excel(file_wisman, sheet_name=f"non udara {nama_bulan_sheet}", header=None)
@@ -273,10 +271,18 @@ with center_col:
                             "rlm_total": clean_hotel(aceh_b.get("rlmtgab", 0)), "rlm_total_non": clean_hotel(aceh_n.get("rlmtgab", 0))
                         }
 
-                        # KALKULASI NARASI
-                        baris_baru_jumlah = geser_tabel1(data_word["tabel1"]["JUMLAH"], wisman_sekarang)
-                        wisman_tahun_lalu, wisman_bulan_lalu, wisman_kumulatif_ini = baris_baru_jumlah[0], baris_baru_jumlah[12], baris_baru_jumlah[14]
-                        wisman_kumulatif_lalu = baris_baru_jumlah[8] - sum(baris_baru_jumlah[1:8]) 
+                        # KALKULASI NARASI DAN INDEKS DINAMIS
+                        baris_baru_jumlah = geser_tabel1(data_word["tabel1"]["JUMLAH"], wisman_sekarang, BULAN)
+                        
+                        wisman_tahun_lalu = baris_baru_jumlah[0]
+                        wisman_bulan_lalu = baris_baru_jumlah[11] if BULAN == 1 else baris_baru_jumlah[12]
+                        wisman_kumulatif_ini = baris_baru_jumlah[14]
+                        
+                        idx_jandes = 13 - BULAN
+                        if BULAN == 1:
+                            wisman_kumulatif_lalu = baris_baru_jumlah[0]
+                        else:
+                            wisman_kumulatif_lalu = baris_baru_jumlah[idx_jandes] - sum(baris_baru_jumlah[1:idx_jandes])
                         
                         mtm_w = ((wisman_sekarang - wisman_bulan_lalu) / wisman_bulan_lalu) * 100 if wisman_bulan_lalu else 0
                         yoy_w = ((wisman_sekarang - wisman_tahun_lalu) / wisman_tahun_lalu) * 100 if wisman_tahun_lalu else 0
@@ -347,7 +353,7 @@ with center_col:
 
                         baris_idx = 3
                         for key, negara in zip(top10_keys + ["lainnya"], target_negara[:-1]):
-                            baris_baru = geser_tabel1(data_word["tabel1"][negara], wisman_data[key])
+                            baris_baru = geser_tabel1(data_word["tabel1"][negara], wisman_data[key], BULAN)
                             sel_tulis = tabel1_word.rows[baris_idx].cells[-15:] 
                             for col_idx in range(15): sel_tulis[col_idx].text = format_ribuan(baris_baru[col_idx])
                             baris_idx += 1
@@ -355,17 +361,14 @@ with center_col:
                         sel_tulis = tabel1_word.rows[baris_idx].cells[-15:]
                         for col_idx in range(15): sel_tulis[col_idx].text = format_ribuan(baris_baru_jumlah[col_idx])
 
-                        # SIMPAN FILE LANGSUNG KE FOLDER
-                        doc_tpl.save(nama_file_baru)
-
                         # SIMPAN KE MEMORY UNTUK FITUR DOWNLOAD BUTTON
                         output_stream = io.BytesIO()
                         doc_tpl.save(output_stream)
                         output_stream.seek(0)
 
-                        st.success(f"🎉 Berhasil! Dokumen BRS telah dibuat dan tersimpan di folder ini sebagai: **{nama_file_baru}**")
+                        st.success(f"🎉 Berhasil! Silakan download dokumen BRS Anda di bawah ini:")
                         st.download_button(
-                            label="📥 Download Salinan Dokumen BRS",
+                            label=f"📥 Download {nama_file_baru}",
                             data=output_stream,
                             file_name=nama_file_baru,
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -375,4 +378,4 @@ with center_col:
                     except Exception as e:
                         st.error(f"Terjadi kesalahan saat memproses data: {e}")
         else:
-            st.warning("⚠️ Harap upload file Data Wisman dan Data VHTS terlebih dahulu!")
+            st.warning("⚠️ Harap lengkapi ketiga file (Wisman, VHTS, dan BRS Lama) terlebih dahulu!")
