@@ -171,10 +171,10 @@ with center_col:
     # --- BARIS 2: TPK YOY ---
     col_tpk1, col_tpk2 = st.columns(2)
     with col_tpk1:
-        st.markdown('<p class="custom-label">TPK Bintang m-to-m (%)</p>', unsafe_allow_html=True)
+        st.markdown('<p class="custom-label">TPK Bintang y-o-y (%)</p>', unsafe_allow_html=True)
         TPK_BINTANG_YOY = st.number_input("TPK Bintang", value=24.13, format="%.2f", label_visibility="collapsed")
     with col_tpk2:
-        st.markdown('<p class="custom-label">TPK Non-Bintang m-to-m (%)</p>', unsafe_allow_html=True)
+        st.markdown('<p class="custom-label">TPK Non-Bintang y-o-y (%)</p>', unsafe_allow_html=True)
         TPK_NON_YOY = st.number_input("TPK Non", value=18.47, format="%.2f", label_visibility="collapsed")
 
     st.write("<br>", unsafe_allow_html=True)
