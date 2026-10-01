@@ -12,6 +12,9 @@ import io
 
 import os
 
+
+
+
 # --- KONFIGURASI TAMPILAN WEB ---
 
 st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon="logobps.png", layout="wide")
@@ -559,24 +562,28 @@ _, center_col, _ = st.columns([0.5, 6, 0.5])
 
 with center_col:
 
-    # --- HEADER: LOGO & JUDUL BERDAMPINGAN ---
-    # Logo dirender langsung oleh Streamlit agar Base64 tidak muncul sebagai teks.
-    col_logo, col_title = st.columns([1, 3])
+    # --- HEADER: LOGO + JUDUL TERPUSAT ---
+    # Gunakan kolom tengah agar seluruh header benar-benar berada di tengah.
+    # Logo tetap dirender dengan st.image() sehingga tidak ada Base64 yang tampil sebagai teks.
+    _, header_col, _ = st.columns([2.0, 3.2, 2.0])
 
-    with col_logo:
-        if os.path.exists("logosibrio.png"):
-            st.image("logosibrio.png", width=85)
+    with header_col:
+        logo_col, title_col = st.columns([1, 2.6], vertical_alignment="center")
 
-    with col_title:
+        with logo_col:
+            if os.path.exists("logosibrio.png"):
+                st.image("logosibrio.png", width=78)
+
+        with title_col:
+            st.markdown(
+                '<div class="main-title">SIBRIO</div>',
+                unsafe_allow_html=True
+            )
+
         st.markdown(
-            '<div class="main-title" style="text-align:left;">SIBRIO</div>',
+            '<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>',
             unsafe_allow_html=True
         )
-
-    st.markdown(
-        '<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>',
-        unsafe_allow_html=True
-    )
 
 
 
