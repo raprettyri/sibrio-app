@@ -439,33 +439,88 @@ def make_current_historis_tabel2(hotel_data, bulan, tahun):
     } for kat, b, n in rows])
 
 def create_excel_historis(t1, t2):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        if t1.empty:
-            t1_out = pd.DataFrame()
-        else:
-            t1_out = t1.copy()
-            t1_out["PeriodeSort"] = _period_index_from_df(t1_out)
-            t1_out = t1_out.sort_values(["PeriodeSort", "Kebangsaan"])
-            t1_out = t1_out.drop(columns=["PeriodeSort"])
-            pivot = t1_out.pivot_table(index="Kebangsaan", columns="Periode", values="Wisman", aggfunc="sum", fill_value=0)
-            # Susun kolom kronologis
-            periods = sorted(pivot.columns, key=lambda x: pd.Period(x, freq="M") if isinstance(x, str) and " " in x else x)
-            pivot = pivot.reindex(columns=periods)
-            pivot["Total"] = pivot.sum(axis=1)
-            pivot = pivot.reindex(["Malaysia", "Selandia Baru", "Perancis", "Jerman", "Australia", "Belanda", "Amerika Serikat", "Singapura", "Inggris", "Thailand", "Lainnya", "JUMLAH"], fill_value=0)
-            pivot.loc["JUMLAH"] = pivot.drop(index="JUMLAH").sum(axis=0)
-            t1_out = pivot
-        t1_out.to_excel(writer, sheet_name="Tabel 1 - Wisman")
+    """Membuat file Excel histori secara robust.
 
-        if t2.empty:
-            t2_out = pd.DataFrame()
-        else:
-            t2_out = t2.copy()
-            t2_out["PeriodeSort"] = _period_index_from_df(t2_out)
-            t2_out = t2_out.sort_values(["PeriodeSort", "Kategori"]).drop(columns=["PeriodeSort"])
-            t2_out = t2_out[["Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]]
+    Tidak menggunakan pivot_table() karena pada beberapa versi pandas
+    pivot_table dapat melempar KeyError walaupun kolom terlihat tersedia.
+    Data Tabel 1 dibentuk dengan groupby + unstack sehingga lebih aman.
+    """
+    output = io.BytesIO()
+
+    # Normalisasi kolom agar file histori lama / hasil upgrade tetap kompatibel.
+    t1_cols = ["Tahun", "Bulan", "Periode", "Kebangsaan", "Wisman"]
+    t2_cols = ["Tahun", "Bulan", "Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]
+
+    t1 = t1.copy() if isinstance(t1, pd.DataFrame) else pd.DataFrame()
+    t2 = t2.copy() if isinstance(t2, pd.DataFrame) else pd.DataFrame()
+
+    # Hilangkan whitespace pada nama kolom.
+    if not t1.empty:
+        t1.columns = [str(c).strip() for c in t1.columns]
+    if not t2.empty:
+        t2.columns = [str(c).strip() for c in t2.columns]
+
+    # Pastikan kolom wajib ada. Kalau tidak, buat DataFrame kosong agar
+    # proses download tidak menjatuhkan aplikasi.
+    if t1.empty or not all(c in t1.columns for c in t1_cols):
+        t1_out = pd.DataFrame(columns=["Kebangsaan"])
+    else:
+        t1 = t1[t1_cols].copy()
+        t1["Wisman"] = pd.to_numeric(t1["Wisman"], errors="coerce").fillna(0)
+        t1["_PeriodeSort"] = _period_index_from_df(t1)
+        t1 = t1[t1["_PeriodeSort"].notna()].copy()
+        t1 = t1.sort_values(["_PeriodeSort", "Kebangsaan"])
+
+        # Jika ada duplikasi periode + kebangsaan, jumlahkan.
+        t1 = (
+            t1.groupby(["Kebangsaan", "Periode", "_PeriodeSort"], as_index=False)["Wisman"]
+              .sum()
+        )
+
+        # unstack lebih stabil daripada pivot_table pada pandas versi baru.
+        pivot = (
+            t1.set_index(["Kebangsaan", "_PeriodeSort"])["Wisman"]
+              .unstack("_PeriodeSort", fill_value=0)
+        )
+
+        # Nama kolom menjadi label BRS, misalnya Jan 2025.
+        pivot.columns = [
+            _period_label(p.year, p.month) for p in pivot.columns
+        ]
+
+        # Urutan negara sesuai Tabel 1 BRS.
+        country_order = [
+            "Malaysia", "Selandia Baru", "Perancis", "Jerman", "Australia",
+            "Belanda", "Amerika Serikat", "Singapura", "Inggris", "Thailand",
+            "Lainnya"
+        ]
+        existing = [x for x in country_order if x in pivot.index]
+        others = [x for x in pivot.index if x not in existing]
+        pivot = pivot.reindex(existing + others, fill_value=0)
+
+        # Total per periode.
+        pivot.loc["JUMLAH"] = pivot.sum(axis=0)
+        pivot["Total"] = pivot.sum(axis=1)
+        t1_out = pivot.reset_index().rename(columns={"Kebangsaan": "Kebangsaan"})
+
+    if t2.empty or not all(c in t2.columns for c in t2_cols):
+        t2_out = pd.DataFrame(columns=t2_cols)
+    else:
+        t2 = t2[t2_cols].copy()
+        t2["Hotel Bintang"] = pd.to_numeric(t2["Hotel Bintang"], errors="coerce").fillna(0)
+        t2["Akomodasi Lainnya"] = pd.to_numeric(t2["Akomodasi Lainnya"], errors="coerce").fillna(0)
+        t2["_PeriodeSort"] = _period_index_from_df(t2)
+        t2 = t2[t2["_PeriodeSort"].notna()].copy()
+        t2 = t2.sort_values(["_PeriodeSort", "Kategori"])
+        t2 = t2.drop_duplicates(subset=["_PeriodeSort", "Kategori"], keep="last")
+        t2_out = t2[["Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]].copy()
+
+    # Selalu tulis KEDUA sheet. Ini penting agar openpyxl tidak mendapatkan
+    # workbook tanpa sheet visible ketika salah satu data kosong/error.
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        t1_out.to_excel(writer, sheet_name="Tabel 1 - Wisman", index=False)
         t2_out.to_excel(writer, sheet_name="Tabel 2 - Hotel", index=False)
+
     output.seek(0)
     return output
 
