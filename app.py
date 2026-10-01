@@ -1,11 +1,19 @@
 import streamlit as st
+
 import pandas as pd
+
 import numpy as np
+
 import docx
+
 from docxtpl import DocxTemplate
+
 import io
+
 import os
+
 import base64
+
 
 
 # --- KONFIGURASI TAMPILAN WEB ---
@@ -15,9 +23,15 @@ st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon="logobps.png",
 
 
 # --- INJEKSI CUSTOM CSS ---
+
 st.markdown("""
+
 <style>
+
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&display=swap');
+
+
+
 /* Mengatur font global dan background hitam */
 
 .stApp {
@@ -279,6 +293,16 @@ def _period_from_ym(year, month):
 def _period_label(year, month):
     return f"{get_short_bulan(int(month))} {int(year)}"
 
+def _period_index_from_df(df):
+    """Membuat PeriodIndex bulanan dari kolom Tahun dan Bulan secara aman."""
+    years = pd.to_numeric(df["Tahun"], errors="coerce")
+    months = pd.to_numeric(df["Bulan"], errors="coerce")
+    dates = pd.to_datetime(
+        {"year": years, "month": months, "day": 1},
+        errors="coerce"
+    )
+    return dates.dt.to_period("M")
+
 def get_previous_month(year, month):
     p = _period_from_ym(year, month) - 1
     return int(p.year), int(p.month)
@@ -421,7 +445,7 @@ def create_excel_historis(t1, t2):
             t1_out = pd.DataFrame()
         else:
             t1_out = t1.copy()
-            t1_out["PeriodeSort"] = pd.PeriodIndex(year=t1_out["Tahun"].astype(int), month=t1_out["Bulan"].astype(int), freq="M")
+            t1_out["PeriodeSort"] = _period_index_from_df(t1_out)
             t1_out = t1_out.sort_values(["PeriodeSort", "Kebangsaan"])
             t1_out = t1_out.drop(columns=["PeriodeSort"])
             pivot = t1_out.pivot_table(index="Kebangsaan", columns="Periode", values="Wisman", aggfunc="sum", fill_value=0)
@@ -438,7 +462,7 @@ def create_excel_historis(t1, t2):
             t2_out = pd.DataFrame()
         else:
             t2_out = t2.copy()
-            t2_out["PeriodeSort"] = pd.PeriodIndex(year=t2_out["Tahun"].astype(int), month=t2_out["Bulan"].astype(int), freq="M")
+            t2_out["PeriodeSort"] = _period_index_from_df(t2_out)
             t2_out = t2_out.sort_values(["PeriodeSort", "Kategori"]).drop(columns=["PeriodeSort"])
             t2_out = t2_out[["Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]]
         t2_out.to_excel(writer, sheet_name="Tabel 2 - Hotel", index=False)
@@ -455,7 +479,7 @@ def tampilkan_historis():
     all_periods = []
     for df in (t1, t2):
         if not df.empty:
-            all_periods.extend(pd.PeriodIndex(year=df["Tahun"].astype(int), month=df["Bulan"].astype(int), freq="M").tolist())
+            all_periods.extend(_period_index_from_df(df).tolist())
     all_periods = sorted(set(all_periods))
     if not all_periods:
         return
@@ -470,7 +494,7 @@ def tampilkan_historis():
     def filter_period(df):
         if df.empty:
             return df
-        p = pd.PeriodIndex(year=df["Tahun"].astype(int), month=df["Bulan"].astype(int), freq="M")
+        p = _period_index_from_df(df)
         return df[(p >= p_awal) & (p <= p_akhir)].copy()
     t1_f = filter_period(t1)
     t2_f = filter_period(t2)
