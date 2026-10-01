@@ -1,2062 +1,381 @@
 import streamlit as st
-
-
-
 import pandas as pd
-
-
-
 import numpy as np
-
-
-
 import docx
-
-
-
 from docxtpl import DocxTemplate
-
-
-
 import io
-
-
-
 import os
-
-
-
-
-
-
-
-
+import base64
 
 # --- KONFIGURASI TAMPILAN WEB ---
-
-
-
 st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon="logobps.png", layout="wide")
 
-
-
-
-
-
-
 # --- INJEKSI CUSTOM CSS ---
-
-
-
 st.markdown("""
-
-
-
 <style>
-
-
-
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&display=swap');
 
-
-
-
-
-
-
 /* Mengatur font global dan background hitam */
-
-
-
 .stApp {
-
-
-
     background-color: #0E1117;
-
-
-
     font-family: 'Poppins', sans-serif;
-
-
-
     color: white;
-
-
-
 }
-
-
-
-
-
-
 
 /* Menyembunyikan padding atas bawaan Streamlit */
-
-
-
 .block-container {
-
-
-
     padding-top: 2rem !important;
-
-
-
 }
-
-
-
-
-
-
 
 /* Container untuk Logo & Judul Tengah */
-
-
-
 .header-container {
-
-
-
     display: flex;
-
-
-
     justify-content: center;
-
-
-
     align-items: center;
-
-
-
     gap: 20px;
-
-
-
     margin-top: 10px;
-
-
-
 }
-
-
-
-
-
-
 
 /* Main Title SIBRIO */
-
-
-
 .main-title {
-
-
-
     color: #FF5722;
-
-
-
     font-size: 65px;
-
-
-
     font-weight: 900;
-
-
-
     letter-spacing: 3px;
-
-
-
     margin: 0;
-
-
-
     line-height: 1.1;
-
-
-
 }
-
-
-
 .main-subtitle {
-
-
-
     text-align: center;
-
-
-
     color: #E0E0E0;
-
-
-
     font-size: 16px;
-
-
-
     font-weight: 400;
-
-
-
     margin-bottom: 40px;
-
-
-
     line-height: 1.4;
-
-
-
     margin-top: 10px;
-
-
-
 }
-
-
-
-
-
-
 
 /* Label Custom Rata Tengah */
-
-
-
 .custom-label {
-
-
-
     text-align: center;
-
-
-
     font-weight: 600;
-
-
-
     font-size: 14px;
-
-
-
     color: #FAFAFA;
-
-
-
     margin-bottom: 5px;
-
-
-
 }
-
-
-
-
-
-
 
 /* Styling Tombol Generate */
-
-
-
 div.stButton > button:first-child {
-
-
-
     background-color: #FF5722 !important;
-
-
-
     color: white !important;
-
-
-
     border-radius: 8px !important;
-
-
-
     border: none !important;
-
-
-
     height: 50px !important;
-
-
-
     font-size: 16px !important;
-
-
-
     font-weight: 600 !important;
-
-
-
     width: 100%;
-
-
-
     margin-top: 10px;
-
-
-
 }
-
-
-
 div.stButton > button:first-child:hover {
-
-
-
     background-color: #E64A19 !important;
-
-
-
 }
-
-
-
-
-
-
 
 /* Styling Input Box */
-
-
-
 div[data-baseweb="select"] > div, input[type="number"] {
-
-
-
     background-color: #262730 !important;
-
-
-
     color: white !important;
-
-
-
     border-radius: 6px !important;
-
-
-
     border: 1px solid #444 !important;
-
-
-
 }
-
-
-
 </style>
-
-
-
 """, unsafe_allow_html=True)
 
 
-
-
-
-
-
-
-
-
-
 # --- HELPER FUNCTIONS ---
-
-
+def get_image_base64(path):
+    if os.path.exists(path):
+        with open(path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode()
+    return ""
 
 def clean_wisman(teks):
-
-
-
     if pd.isna(teks) or str(teks).strip() == "" or str(teks).strip() == "-": return 0
-
-
-
     try: return int(str(teks).strip().replace(".", "").replace(",", ""))
-
-
-
     except: return 0
 
-
-
-
-
-
-
 def clean_hotel(teks):
-
-
-
     if pd.isna(teks) or str(teks).strip() == "" or str(teks).strip() == "-": return 0.0
-
-
-
     if isinstance(teks, (int, float, np.number)): return float(teks)
-
-
-
     teks_str = str(teks).strip()
-
-
-
     if "," in teks_str and "." not in teks_str: teks_str = teks_str.replace(",", ".")
-
-
-
     elif "," in teks_str and "." in teks_str: teks_str = teks_str.replace(".", "").replace(",", ".")
-
-
-
     try: return float(teks_str)
-
-
-
     except: return 0.0
 
-
-
-
-
-
-
 def format_ribuan(angka): 
-
-
-
     return f"{int(round(float(angka))):,}".replace(",", ".")
-
-
-
 def format_desimal(angka, digit=2): 
-
-
-
     return f"{float(angka):,.{digit}f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-
 def get_nama_bulan(angka_bulan): 
-
-
-
     return ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"][angka_bulan - 1]
-
-
-
 def get_short_bulan(angka_bulan): 
-
-
-
     return ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"][angka_bulan - 1]
-
-
-
 def get_arah_tren(angka): 
-
-
-
     return "peningkatan" if angka > 0 else "penurunan"
-
-
-
 def get_arah_tren_singkat(angka): 
-
-
-
     return "naik" if angka > 0 else "turun"
 
-
-
-
-
-
-
 # FUNGSI PERGESERAN TABEL YANG SUDAH DINAMIS
-
-
-
 def geser_tabel1(data_lama_negara, data_excel_baru, bulan_sekarang):
-    """
-    Membentuk Tabel 1 BRS bulan berjalan tanpa mengubah data bulan-bulan
-    yang sudah ada pada BRS bulan sebelumnya.
-
-    Struktur hasil:
-    - sisa bulan tahun sebelumnya
-    - Jan-Des tahun sebelumnya
-    - Jan sampai bulan berjalan tahun ini
-    - Total tahun berjalan
-    """
-    data_lama = [clean_wisman(x) for x in data_lama_negara]
-
-    # Pertahankan 14 nilai sebelum Total dari BRS bulan lalu,
-    # lalu tambahkan data bulan berjalan dari Excel.
-    array_baru = data_lama[:14] + [clean_wisman(data_excel_baru)]
-
-    # Posisi Januari tahun berjalan.
-    idx_jan = 14 - int(bulan_sekarang)
-
-    # Total hanya menjumlahkan Januari sampai bulan berjalan.
-    data_tahun_ini = array_baru[idx_jan:]
+    # Ambil 13 kolom sebelumnya (membuang bulan paling lama), lalu tambahkan data bulan ini
+    array_baru = data_lama_negara[1:14] + [data_excel_baru]
+    
+    # Cari tahu di mana posisi kolom "Jan-Des" berada (Polanya selalu 13 - bulan)
+    idx_jandes = 13 - bulan_sekarang
+    
+    # Total tahun ini adalah jumlah dari kolom setelah "Jan-Des" sampai akhir
+    data_tahun_ini = array_baru[idx_jandes + 1 :]
     total_ini = sum(data_tahun_ini)
-
+    
     return array_baru + [total_ini]
 
 
-# ==================== FITUR HISTORIS PARIWISATA ====================
-
-HISTORIS_FILE = "historis_pariwisata.xlsx"
-
-
-
-def _period_from_ym(year, month):
-
-    return pd.Period(year=int(year), month=int(month), freq="M")
-
-
-
-def _period_label(year, month):
-
-    return f"{get_short_bulan(int(month))} {int(year)}"
-
-
-
-def _period_index_from_df(df):
-
-    """Membuat PeriodIndex bulanan dari kolom Tahun dan Bulan secara aman."""
-
-    years = pd.to_numeric(df["Tahun"], errors="coerce")
-
-    months = pd.to_numeric(df["Bulan"], errors="coerce")
-
-    dates = pd.to_datetime(
-
-        {"year": years, "month": months, "day": 1},
-
-        errors="coerce"
-
-    )
-
-    return dates.dt.to_period("M")
-
-
-
-def get_previous_month(year, month):
-
-    p = _period_from_ym(year, month) - 1
-
-    return int(p.year), int(p.month)
-
-
-
-def ensure_historis_file():
-
-    if not os.path.exists(HISTORIS_FILE):
-
-        with pd.ExcelWriter(HISTORIS_FILE, engine="openpyxl") as writer:
-
-            pd.DataFrame(columns=["Tahun", "Bulan", "Periode", "Kebangsaan", "Wisman"]).to_excel(writer, sheet_name="Historis_Tabel1", index=False)
-
-            pd.DataFrame(columns=["Tahun", "Bulan", "Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]).to_excel(writer, sheet_name="Historis_Tabel2", index=False)
-
-
-
-def load_historis():
-
-    ensure_historis_file()
-
-    try:
-
-        t1 = pd.read_excel(HISTORIS_FILE, sheet_name="Historis_Tabel1")
-
-    except Exception:
-
-        t1 = pd.DataFrame(columns=["Tahun", "Bulan", "Periode", "Kebangsaan", "Wisman"])
-
-    try:
-
-        t2 = pd.read_excel(HISTORIS_FILE, sheet_name="Historis_Tabel2")
-
-    except Exception:
-
-        t2 = pd.DataFrame(columns=["Tahun", "Bulan", "Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"])
-
-    return t1, t2
-
-
-
-def save_historis(t1_new=None, t2_new=None):
-
-    t1, t2 = load_historis()
-
-    if t1_new is not None and not t1_new.empty:
-
-        t1 = pd.concat([t1, t1_new], ignore_index=True)
-
-    if t2_new is not None and not t2_new.empty:
-
-        t2 = pd.concat([t2, t2_new], ignore_index=True)
-
-
-
-    if not t1.empty:
-
-        t1["Tahun"] = pd.to_numeric(t1["Tahun"], errors="coerce")
-
-        t1["Bulan"] = pd.to_numeric(t1["Bulan"], errors="coerce")
-
-        t1 = t1.drop_duplicates(subset=["Tahun", "Bulan", "Kebangsaan"], keep="last")
-
-        t1 = t1.sort_values(["Tahun", "Bulan", "Kebangsaan"]).reset_index(drop=True)
-
-    if not t2.empty:
-
-        t2["Tahun"] = pd.to_numeric(t2["Tahun"], errors="coerce")
-
-        t2["Bulan"] = pd.to_numeric(t2["Bulan"], errors="coerce")
-
-        t2 = t2.drop_duplicates(subset=["Tahun", "Bulan", "Kategori"], keep="last")
-
-        t2 = t2.sort_values(["Tahun", "Bulan", "Kategori"]).reset_index(drop=True)
-
-
-
-    with pd.ExcelWriter(HISTORIS_FILE, engine="openpyxl") as writer:
-
-        t1.to_excel(writer, sheet_name="Historis_Tabel1", index=False)
-
-        t2.to_excel(writer, sheet_name="Historis_Tabel2", index=False)
-
-
-
-def get_old_tabel1_periods(bulan_sekarang, tahun_sekarang):
-
-    # Struktur Tabel 1 BRS bulan sebelumnya:
-
-    # sisa bulan pada tahun sebelumnya + Jan-Des tahun sebelumnya +
-
-    # bulan berjalan tahun sebelumnya sampai bulan sebelumnya + Total.
-
-    old_year, old_month = get_previous_month(tahun_sekarang, bulan_sekarang)
-
-    labels = []
-
-    # Bagian bulan lama (mis. untuk BRS Des 2025: Des 2024)
-
-    for m in range(old_month, 13):
-
-        labels.append((old_year - 1, m, _period_label(old_year - 1, m)))
-
-    labels.append((old_year - 1, None, f"Jan-Des {old_year - 1}"))
-
-    # Bagian bulan tahun lama sampai bulan BRS lama
-
-    for m in range(1, old_month + 1):
-
-        labels.append((old_year, m, _period_label(old_year, m)))
-
-    labels.append((None, None, "Total"))
-
-    return labels
-
-
-
-def extract_historis_from_brs(doc_lama, bulan_sekarang, tahun_sekarang, target_negara):
-
-    """Ambil seluruh bulan yang masih tersedia pada BRS lama untuk backfill histori."""
-
-    t1_rows = []
-
-    tabel1 = doc_lama.tables[0]
-
-    labels = get_old_tabel1_periods(bulan_sekarang, tahun_sekarang)
-
-
-
-    for row in tabel1.rows:
-
-        text_row = " ".join(str(c.text) for c in row.cells).upper()
-
-        found = None
-
-        for target in target_negara[:-1]:  # tanpa JUMLAH
-
-            if target.upper() in text_row:
-
-                found = target
-
-                break
-
-        if found is None:
-
-            continue
-
-        vals = [clean_wisman(c.text) for c in row.cells[-15:]]
-
-        for idx, (year, month, period) in enumerate(labels):
-
-            if year is None or month is None or idx >= len(vals):
-
-                continue
-
-            t1_rows.append({
-
-                "Tahun": year, "Bulan": month, "Periode": period,
-
-                "Kebangsaan": found, "Wisman": vals[idx]
-
-            })
-
-
-
-    t2_rows = []
-
-    tabel2 = doc_lama.tables[1]
-
-    data_rows = tabel2.rows[-12:]
-
-    old_year, old_month = get_previous_month(tahun_sekarang, bulan_sekarang)
-
-    periods = [
-
-        _period_from_ym(old_year, old_month) - 2,
-
-        _period_from_ym(old_year, old_month) - 1,
-
-        _period_from_ym(old_year, old_month)
-
-    ]
-
-    categories = ["Asing", "Nusantara", "Total", "TPK"]
-
-    for i, kat in enumerate(categories):
-
-        idx = i * 3
-
-        for offset in range(3):
-
-            row = data_rows[idx + offset]
-
-            p = periods[offset]
-
-            t2_rows.append({
-
-                "Tahun": int(p.year), "Bulan": int(p.month), "Periode": _period_label(p.year, p.month),
-
-                "Kategori": kat,
-
-                "Hotel Bintang": clean_hotel(row.cells[-2].text),
-
-                "Akomodasi Lainnya": clean_hotel(row.cells[-1].text)
-
-            })
-
-
-
-    return pd.DataFrame(t1_rows), pd.DataFrame(t2_rows)
-
-
-
-def make_current_historis_tabel1(wisman_data, bulan, tahun):
-
-    rows = []
-
-    mapping = {
-
-        "malaysia": "Malaysia", "selandia_baru": "Selandia Baru", "perancis": "Perancis",
-
-        "jerman": "Jerman", "australia": "Australia", "belanda": "Belanda",
-
-        "amerika_serikat": "Amerika Serikat", "singapura": "Singapura", "inggris": "Inggris",
-
-        "thailand": "Thailand", "lainnya": "Lainnya"
-
-    }
-
-    for key, nama in mapping.items():
-
-        rows.append({
-
-            "Tahun": int(tahun), "Bulan": int(bulan), "Periode": _period_label(tahun, bulan),
-
-            "Kebangsaan": nama, "Wisman": clean_wisman(wisman_data.get(key, 0))
-
-        })
-
-    return pd.DataFrame(rows)
-
-
-
-def make_current_historis_tabel2(hotel_data, bulan, tahun):
-
-    rows = [
-
-        ("Asing", hotel_data.get("rlm_asing", 0), hotel_data.get("rlm_asing_non", 0)),
-
-        ("Nusantara", hotel_data.get("rlm_nus", 0), hotel_data.get("rlm_nus_non", 0)),
-
-        ("Total", hotel_data.get("rlm_total", 0), hotel_data.get("rlm_total_non", 0)),
-
-        ("TPK", hotel_data.get("tpk_bintang", 0), hotel_data.get("tpk_non", 0)),
-
-    ]
-
-    return pd.DataFrame([{
-
-        "Tahun": int(tahun), "Bulan": int(bulan), "Periode": _period_label(tahun, bulan),
-
-        "Kategori": kat, "Hotel Bintang": clean_hotel(b), "Akomodasi Lainnya": clean_hotel(n)
-
-    } for kat, b, n in rows])
-
-
-
-def create_excel_historis(t1, t2):
-
-    """Membuat file Excel histori secara robust.
-
-
-
-    Tidak menggunakan pivot_table() karena pada beberapa versi pandas
-
-    pivot_table dapat melempar KeyError walaupun kolom terlihat tersedia.
-
-    Data Tabel 1 dibentuk dengan groupby + unstack sehingga lebih aman.
-
-    """
-
-    output = io.BytesIO()
-
-
-
-    # Normalisasi kolom agar file histori lama / hasil upgrade tetap kompatibel.
-
-    t1_cols = ["Tahun", "Bulan", "Periode", "Kebangsaan", "Wisman"]
-
-    t2_cols = ["Tahun", "Bulan", "Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]
-
-
-
-    t1 = t1.copy() if isinstance(t1, pd.DataFrame) else pd.DataFrame()
-
-    t2 = t2.copy() if isinstance(t2, pd.DataFrame) else pd.DataFrame()
-
-
-
-    # Hilangkan whitespace pada nama kolom.
-
-    if not t1.empty:
-
-        t1.columns = [str(c).strip() for c in t1.columns]
-
-    if not t2.empty:
-
-        t2.columns = [str(c).strip() for c in t2.columns]
-
-
-
-    # Pastikan kolom wajib ada. Kalau tidak, buat DataFrame kosong agar
-
-    # proses download tidak menjatuhkan aplikasi.
-
-    if t1.empty or not all(c in t1.columns for c in t1_cols):
-
-        t1_out = pd.DataFrame(columns=["Kebangsaan"])
-
-    else:
-
-        t1 = t1[t1_cols].copy()
-
-        t1["Wisman"] = pd.to_numeric(t1["Wisman"], errors="coerce").fillna(0)
-
-        t1["_PeriodeSort"] = _period_index_from_df(t1)
-
-        t1 = t1[t1["_PeriodeSort"].notna()].copy()
-
-        t1 = t1.sort_values(["_PeriodeSort", "Kebangsaan"])
-
-
-
-        # Jika ada duplikasi periode + kebangsaan, jumlahkan.
-
-        t1 = (
-
-            t1.groupby(["Kebangsaan", "Periode", "_PeriodeSort"], as_index=False)["Wisman"]
-
-              .sum()
-
-        )
-
-
-
-        # unstack lebih stabil daripada pivot_table pada pandas versi baru.
-
-        pivot = (
-
-            t1.set_index(["Kebangsaan", "_PeriodeSort"])["Wisman"]
-
-              .unstack("_PeriodeSort", fill_value=0)
-
-        )
-
-
-
-        # Nama kolom menjadi label BRS, misalnya Jan 2025.
-
-        pivot.columns = [
-
-            _period_label(p.year, p.month) for p in pivot.columns
-
-        ]
-
-
-
-        # Urutan negara sesuai Tabel 1 BRS.
-
-        country_order = [
-
-            "Malaysia", "Selandia Baru", "Perancis", "Jerman", "Australia",
-
-            "Belanda", "Amerika Serikat", "Singapura", "Inggris", "Thailand",
-
-            "Lainnya"
-
-        ]
-
-        existing = [x for x in country_order if x in pivot.index]
-
-        others = [x for x in pivot.index if x not in existing]
-
-        pivot = pivot.reindex(existing + others, fill_value=0)
-
-
-
-        # Total per periode.
-
-        pivot.loc["JUMLAH"] = pivot.sum(axis=0)
-
-        pivot["Total"] = pivot.sum(axis=1)
-
-        t1_out = pivot.reset_index().rename(columns={"Kebangsaan": "Kebangsaan"})
-
-
-
-    if t2.empty or not all(c in t2.columns for c in t2_cols):
-
-        t2_out = pd.DataFrame(columns=t2_cols)
-
-    else:
-
-        t2 = t2[t2_cols].copy()
-
-        t2["Hotel Bintang"] = pd.to_numeric(t2["Hotel Bintang"], errors="coerce").fillna(0)
-
-        t2["Akomodasi Lainnya"] = pd.to_numeric(t2["Akomodasi Lainnya"], errors="coerce").fillna(0)
-
-        t2["_PeriodeSort"] = _period_index_from_df(t2)
-
-        t2 = t2[t2["_PeriodeSort"].notna()].copy()
-
-        t2 = t2.sort_values(["_PeriodeSort", "Kategori"])
-
-        t2 = t2.drop_duplicates(subset=["_PeriodeSort", "Kategori"], keep="last")
-
-        t2_out = t2[["Periode", "Kategori", "Hotel Bintang", "Akomodasi Lainnya"]].copy()
-
-
-
-    # Selalu tulis KEDUA sheet. Ini penting agar openpyxl tidak mendapatkan
-
-    # workbook tanpa sheet visible ketika salah satu data kosong/error.
-
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-
-        t1_out.to_excel(writer, sheet_name="Tabel 1 - Wisman", index=False)
-
-        t2_out.to_excel(writer, sheet_name="Tabel 2 - Hotel", index=False)
-
-
-
-    output.seek(0)
-
-    return output
-
-
-
-def tampilkan_historis():
-
-    st.markdown("---")
-
-    st.subheader("📊 Data Historis")
-
-    t1, t2 = load_historis()
-
-    if t1.empty and t2.empty:
-
-        st.info("ℹ️ Belum terdapat data historis. Generate BRS terlebih dahulu.")
-
-        return
-
-    all_periods = []
-
-    for df in (t1, t2):
-
-        if not df.empty:
-
-            all_periods.extend(_period_index_from_df(df).tolist())
-
-    all_periods = sorted(set(all_periods))
-
-    if not all_periods:
-
-        return
-
-    c1, c2 = st.columns(2)
-
-    with c1:
-
-        p_awal = st.selectbox("Periode awal", all_periods, index=0, format_func=lambda p: f"{get_short_bulan(p.month)} {p.year}")
-
-    with c2:
-
-        p_akhir = st.selectbox("Periode akhir", all_periods, index=len(all_periods)-1, format_func=lambda p: f"{get_short_bulan(p.month)} {p.year}")
-
-    if p_awal > p_akhir:
-
-        st.warning("⚠️ Periode awal tidak boleh lebih besar dari periode akhir.")
-
-        return
-
-    def filter_period(df):
-
-        if df.empty:
-
-            return df
-
-        p = _period_index_from_df(df)
-
-        return df[(p >= p_awal) & (p <= p_akhir)].copy()
-
-    t1_f = filter_period(t1)
-
-    t2_f = filter_period(t2)
-
-    st.write("**Tabel 1 — Wisman**")
-
-    if t1_f.empty:
-
-        st.info("Tidak ada data Tabel 1 pada rentang tersebut.")
-
-    else:
-
-        st.dataframe(t1_f, use_container_width=True, hide_index=True)
-
-    st.write("**Tabel 2 — Hotel**")
-
-    if t2_f.empty:
-
-        st.info("Tidak ada data Tabel 2 pada rentang tersebut.")
-
-    else:
-
-        st.dataframe(t2_f, use_container_width=True, hide_index=True)
-
-    excel_hist = create_excel_historis(t1_f, t2_f)
-
-    st.download_button("📥 Download Data Historis Excel", data=excel_hist, file_name="historis_pariwisata.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-
-
-
-
-
 # --- KONTEN UTAMA (DI TENGAH LAYAR) ---
-
-
-
 _, center_col, _ = st.columns([0.5, 6, 0.5])
 
-
-
-
-
-
-
 with center_col:
-
-
-
-    # --- HEADER: LOGO + JUDUL TERPUSAT ---
-
-    # Gunakan kolom tengah agar seluruh header benar-benar berada di tengah.
-
-    # Logo tetap dirender dengan st.image() sehingga tidak ada Base64 yang tampil sebagai teks.
-
-    _, header_col, _ = st.columns([2.0, 3.2, 2.0])
-
-
-
-    with header_col:
-
-        logo_col, title_col = st.columns([1, 2.6], vertical_alignment="center")
-
-
-
-        with logo_col:
-
-            if os.path.exists("logosibrio.png"):
-
-                st.image("logosibrio.png", width=78)
-
-
-
-        with title_col:
-
-            st.markdown(
-
-                '<div class="main-title">SIBRIO</div>',
-
-                unsafe_allow_html=True
-
-            )
-
-
-
-        st.markdown(
-
-            '<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>',
-
-            unsafe_allow_html=True
-
-        )
-
-
-
-
-
-
+    # --- HEADER: LOGO & JUDUL BERDAMPINGAN ---
+    logo_base64 = get_image_base64("logosibrio.png")
+    img_html = f'<img src="data:image/jpeg;base64,{logo_base64}" style="width: 85px; flex-shrink: 0; object-fit: contain;">' if logo_base64 else ''
+    
+    html_header = f"""
+<div class="header-container">
+    {img_html}
+    <div class="main-title">SIBRIO</div>
+</div>
+<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>
+"""
+    st.markdown(html_header, unsafe_allow_html=True)
 
     # --- BARIS 1: BULAN & TAHUN ---
-
-
-
     col_b, col_t = st.columns(2)
-
-
-
     with col_b:
-
-
-
         st.markdown('<p class="custom-label">Bulan</p>', unsafe_allow_html=True)
-
-
-
         BULAN = st.selectbox("Bulan", [1,2,3,4,5,6,7,8,9,10,11,12], index=4, label_visibility="collapsed")
-
-
-
     with col_t:
-
-
-
         st.markdown('<p class="custom-label">Tahun</p>', unsafe_allow_html=True)
-
-
-
         TAHUN = st.number_input("Tahun", min_value=2020, max_value=2050, value=2026, label_visibility="collapsed")
-
-
-
-
-
-
-
+        
     st.write("<br>", unsafe_allow_html=True)
-
-
-
-
-
-
 
     # --- BARIS 2: TPK YOY ---
-
-
-
     col_tpk1, col_tpk2 = st.columns(2)
-
-
-
     with col_tpk1:
-
-
-
         st.markdown('<p class="custom-label">TPK Bintang y-o-y (%)</p>', unsafe_allow_html=True)
-
-
-
-        TPK_BINTANG_YOY = st.number_input("TPK Bintang", value=23.39, format="%.2f", label_visibility="collapsed")
-
-
-
+        TPK_BINTANG_YOY = st.number_input("TPK Bintang", value=24.13, format="%.2f", label_visibility="collapsed")
     with col_tpk2:
-
-
-
         st.markdown('<p class="custom-label">TPK Non-Bintang y-o-y (%)</p>', unsafe_allow_html=True)
-
-
-
-        TPK_NON_YOY = st.number_input("TPK Non", value=19.39, format="%.2f", label_visibility="collapsed")
-
-
-
-
-
-
+        TPK_NON_YOY = st.number_input("TPK Non", value=18.47, format="%.2f", label_visibility="collapsed")
 
     st.write("<br>", unsafe_allow_html=True)
-
-
-
-
-
-
 
     # --- BARIS 3: UPLOAD FILE EXCEL & WORD ---
-
-
-
     col_up1, col_up2, col_up3 = st.columns(3)
-
-
-
     with col_up1:
-
-
-
         st.markdown('<p class="custom-label">Data Wisman (Excel)</p>', unsafe_allow_html=True)
-
-
-
         file_wisman = st.file_uploader("Wisman", type=["xlsx", "xls"], label_visibility="collapsed")
-
-
-
     with col_up2:
-
-
-
         st.markdown('<p class="custom-label">Data VHTS (Excel)</p>', unsafe_allow_html=True)
-
-
-
         file_vhts = st.file_uploader("VHTS", type=["xlsx", "xls"], label_visibility="collapsed")
-
-
-
     with col_up3:
-
-
-
         st.markdown('<p class="custom-label">BRS Bulan Lalu (Word)</p>', unsafe_allow_html=True)
-
-
-
         file_brs_lama = st.file_uploader("BRS Lama", type=["docx"], label_visibility="collapsed")
-
-
-
-
-
-
 
     st.write("<br>", unsafe_allow_html=True)
 
-
-
-
-
-
-
     # --- TOMBOL GENERATE ---
-
-
-
     if st.button("👇 Generate BRS Sekarang", use_container_width=True):
-
-
-
         PROVINSI = 11 
 
-
-
-
-
-
-
         if file_wisman is not None and file_vhts is not None and file_brs_lama is not None:
-
-
-
             file_template = "Template.docx"
-
-
-
             file_map_wisman = "wisman.xlsx"
-
-
-
             file_map_hotel = "hotel.xlsx"
-
-
-
-
-
-
-
+            
             nama_file_baru = f"BRS_Pariwisata_{BULAN}_{TAHUN}.docx"
-
-
-
-
-
-
-
+            
             if not os.path.exists(file_template):
-
-
-
                 st.error(f"❌ File '{file_template}' tidak ditemukan di folder aplikasi!")
-
-
-
             elif not os.path.exists(file_map_wisman):
-
-
-
                 st.error(f"❌ File '{file_map_wisman}' tidak ditemukan di folder aplikasi!")
-
-
-
             elif not os.path.exists(file_map_hotel):
-
-
-
                 st.error(f"❌ File '{file_map_hotel}' tidak ditemukan di folder aplikasi!")
-
-
-
             else:
-
-
-
                 with st.spinner('Memproses data dan merangkai dokumen BRS...'):
-
-
-
                     try:
-
-
-
                         # EKSTRAKSI WORD LAMA
-
-
-
                         doc_lama = docx.Document(file_brs_lama)
-
-
-
                         data_word = {"tabel1": {}, "tabel2": {}}
-
-
-
-
-
-
-
+                        
                         tabel1 = doc_lama.tables[0]
-
-
-
                         target_negara = ["Malaysia", "Selandia Baru", "Perancis", "Jerman", "Australia", 
-
-
-
                                          "Belanda", "Amerika Serikat", "Singapura", "Inggris", "Thailand", "Lainnya", "JUMLAH"]
-
-
-
                         for row in tabel1.rows:
-
-
-
                             teks_baris = " ".join([str(c.text) for c in row.cells]).upper()
-
-
-
                             for target in target_negara:
-
-
-
                                 if target.upper() in teks_baris and target not in data_word["tabel1"]:
-
-
-
                                     data_word["tabel1"][target] = [clean_wisman(sel.text) for sel in row.cells[-15:]]
-
-
-
                                     break
-
-
-
-
-
-
-
+                        
                         tabel2 = doc_lama.tables[1]
-
-
-
                         data_rows = tabel2.rows[-12:] 
-
-
-
                         for i, kat in enumerate(["asing", "nusantara", "total", "tpk"]):
-
-
-
                             idx = i * 3
-
-
-
                             data_word["tabel2"][kat] = {
-
-
-
                                 "baris_lama_1": [clean_hotel(data_rows[idx+1].cells[-2].text), clean_hotel(data_rows[idx+1].cells[-1].text)],
-
-
-
                                 "baris_lama_2": [clean_hotel(data_rows[idx+2].cells[-2].text), clean_hotel(data_rows[idx+2].cells[-1].text)]
-
-
-
                             }
 
-
-
-
-
-
-
                         # EKSTRAKSI EXCEL WISMAN
-
-
-
                         wisman_map = pd.read_excel(file_map_wisman)
-
-
-
                         nama_bulan_sheet = get_short_bulan(BULAN).lower()
-
-
-
                         udara = pd.read_excel(file_wisman, sheet_name=f"udara {nama_bulan_sheet}", header=None)
-
-
-
                         non_udara = pd.read_excel(file_wisman, sheet_name=f"non udara {nama_bulan_sheet}", header=None)
-
-
-
-
-
-
-
+                        
                         wisman_data = {}
-
-
-
                         for _, row in wisman_map.iterrows():
-
-
-
                             if row["tipe"] != "row": continue
-
-
-
                             nama, baris = row["variabel"], int(row["baris"]) - 1
-
-
-
                             wisman_data[nama] = clean_wisman(udara.iloc[baris, 11]) + clean_wisman(non_udara.iloc[baris, 11])
-
-
-
-
-
-
-
+                        
                         top10_keys = ["malaysia", "selandia_baru", "perancis", "jerman", "australia", "belanda", "amerika_serikat", "singapura", "inggris", "thailand"]
-
-
-
                         wisman_data["lainnya"] = wisman_data["total_wisman"] - sum([wisman_data[k] for k in top10_keys])
-
-
-
                         wisman_sekarang = wisman_data["total_wisman"]
 
-
-
-
-
-
-
                         # EKSTRAKSI EXCEL HOTEL
-
-
-
                         hotel_df = pd.read_excel(file_vhts, sheet_name="Prov_Jenis")
-
-
-
                         hotel_df.columns = hotel_df.columns.str.strip().str.lower()
-
-
-
                         hotel_df["kd_prov"] = pd.to_numeric(hotel_df["kd_prov"], errors="coerce")
-
-
-
                         hotel_df["jenis_akomodasi"] = pd.to_numeric(hotel_df["jenis_akomodasi"], errors="coerce")
-
-
-
-
-
-
-
+                        
                         aceh_bintang = hotel_df[(hotel_df["kd_prov"]==PROVINSI) & (hotel_df["jenis_akomodasi"]==1)]
-
-
-
                         aceh_non = hotel_df[(hotel_df["kd_prov"]==PROVINSI) & (hotel_df["jenis_akomodasi"]==2)]
-
-
-
-
-
-
-
+                        
                         aceh_b = aceh_bintang.iloc[0] if not aceh_bintang.empty else pd.Series()
-
-
-
                         aceh_n = aceh_non.iloc[0] if not aceh_non.empty else pd.Series()
-
-
-
-
-
-
-
+                        
                         hotel_data = {
-
-
-
                             "tpk_bintang": clean_hotel(aceh_b.get("tpk", 0)), "tpk_non": clean_hotel(aceh_n.get("tpk", 0)),
-
-
-
                             "rlm_asing": clean_hotel(aceh_b.get("rlmta", 0)), "rlm_asing_non": clean_hotel(aceh_n.get("rlmta", 0)),
-
-
-
                             "rlm_nus": clean_hotel(aceh_b.get("rlmtnus", 0)), "rlm_nus_non": clean_hotel(aceh_n.get("rlmtnus", 0)),
-
-
-
                             "rlm_total": clean_hotel(aceh_b.get("rlmtgab", 0)), "rlm_total_non": clean_hotel(aceh_n.get("rlmtgab", 0))
-
-
-
                         }
-
-
-
-
-
-
-
-                        # ==================== SIMPAN / BACKFILL HISTORI ====================
-
-                        # BRS bulan lalu menjadi sumber backfill. Jadi saat membuat Jan 2026
-
-                        # dengan BRS Des 2025, seluruh Jan-Des 2025 langsung masuk histori.
-
-                        hist_t1_old, hist_t2_old = extract_historis_from_brs(
-
-                            doc_lama, BULAN, TAHUN, target_negara
-
-                        )
-
-                        hist_t1_now = make_current_historis_tabel1(wisman_data, BULAN, TAHUN)
-
-                        hist_t2_now = make_current_historis_tabel2(hotel_data, BULAN, TAHUN)
-
-                        save_historis(
-
-                            pd.concat([hist_t1_old, hist_t1_now], ignore_index=True),
-
-                            pd.concat([hist_t2_old, hist_t2_now], ignore_index=True)
-
-                        )
-
-
 
                         # KALKULASI NARASI DAN INDEKS DINAMIS
-
-
-
                         baris_baru_jumlah = geser_tabel1(data_word["tabel1"]["JUMLAH"], wisman_sekarang, BULAN)
-
-
-
-
-
-
-
+                        
                         wisman_tahun_lalu = baris_baru_jumlah[0]
-
-
-
                         wisman_bulan_lalu = baris_baru_jumlah[11] if BULAN == 1 else baris_baru_jumlah[12]
-
-
-
                         wisman_kumulatif_ini = baris_baru_jumlah[14]
-
-
-
-
-
-
-
+                        
                         idx_jandes = 13 - BULAN
-
-
-
                         if BULAN == 1:
-
-
-
                             wisman_kumulatif_lalu = baris_baru_jumlah[0]
-
-
-
                         else:
-
-
-
                             wisman_kumulatif_lalu = baris_baru_jumlah[idx_jandes] - sum(baris_baru_jumlah[1:idx_jandes])
-
-
-
-
-
-
-
+                        
                         mtm_w = ((wisman_sekarang - wisman_bulan_lalu) / wisman_bulan_lalu) * 100 if wisman_bulan_lalu else 0
-
-
-
                         yoy_w = ((wisman_sekarang - wisman_tahun_lalu) / wisman_tahun_lalu) * 100 if wisman_tahun_lalu else 0
-
-
-
                         ctc_w = ((wisman_kumulatif_ini - wisman_kumulatif_lalu) / wisman_kumulatif_lalu) * 100 if wisman_kumulatif_lalu else 0
 
-
-
-
-
-
-
                         tpk_bintang_lalu = data_word["tabel2"]["tpk"]["baris_lama_2"][0]
-
-
-
                         tpk_non_lalu = data_word["tabel2"]["tpk"]["baris_lama_2"][1]
-
-
-
-
-
-
-
+                        
                         # SETUP CONTEXT
-
-
-
                         bln_lalu_angka = 12 if BULAN == 1 else BULAN - 1
-
-
-
                         thn_mtm = TAHUN - 1 if BULAN == 1 else TAHUN
-
-
-
                         bln_singkat = [
-
-
-
                             f"{get_short_bulan(bln_lalu_angka - 1 if bln_lalu_angka > 1 else 12)}'{str(thn_mtm - 1 if bln_lalu_angka == 1 else thn_mtm)[-2:]}",
-
-
-
                             f"{get_short_bulan(bln_lalu_angka)}'{str(thn_mtm)[-2:]}", f"{get_short_bulan(BULAN)}'{str(TAHUN)[-2:]}"
-
-
-
                         ]
 
-
-
-
-
-
-
                         context = {
-
-
-
                             "bulan": get_nama_bulan(BULAN), "tahun": str(TAHUN),
-
-
-
                             "bulan_lalu": get_nama_bulan(bln_lalu_angka), "tahun_lalu": str(TAHUN - 1), "tahun_mtm": str(thn_mtm),
-
-
-
                             "total_wisman": format_ribuan(wisman_sekarang), "total_wisman_lalu": format_ribuan(wisman_bulan_lalu),
-
-
-
                             "total_wisman_yoy": format_ribuan(wisman_tahun_lalu), "kumulatif_wisman": format_ribuan(wisman_kumulatif_ini),
-
-
-
                             "kumulatif_wisman_lalu": format_ribuan(wisman_kumulatif_lalu),
-
-
-
                             "mtm_wisman": format_desimal(abs(mtm_w)), "trend_mtm_wisman": get_arah_tren(mtm_w),
-
-
-
                             "yoy_wisman": format_desimal(abs(yoy_w)), "arah_yoy_wisman": get_arah_tren_singkat(yoy_w),
-
-
-
                             "trend_yoy_wisman": get_arah_tren(yoy_w), "ctc_wisman": format_desimal(abs(ctc_w)),
-
-
-
                             "trend_ctc_wisman": get_arah_tren(ctc_w), "negara_dominan": "Malaysia",
-
-
-
                             "persen_negara_dominan": format_desimal((wisman_data.get("malaysia", 0) / wisman_sekarang) * 100) if wisman_sekarang else "0",
-
-
-
                             "tpk_bintang": format_desimal(hotel_data.get("tpk_bintang", 0)), "tpk_bintang_lalu": format_desimal(tpk_bintang_lalu),
-
-
-
                             "selisih_tpk_bintang": format_desimal(abs(hotel_data.get("tpk_bintang", 0) - tpk_bintang_lalu)), "arah_tpk_bintang": get_arah_tren_singkat(hotel_data.get("tpk_bintang", 0) - tpk_bintang_lalu),
-
-
-
                             "trend_tpk_bintang_mtm": get_arah_tren(hotel_data.get("tpk_bintang", 0) - tpk_bintang_lalu),
-
-
-
                             "tpk_bintang_yoy": format_desimal(TPK_BINTANG_YOY), "selisih_tpk_bintang_yoy": format_desimal(abs(hotel_data.get("tpk_bintang", 0) - TPK_BINTANG_YOY)),
-
-
-
                             "trend_tpk_bintang_yoy": get_arah_tren(hotel_data.get("tpk_bintang", 0) - TPK_BINTANG_YOY),
-
-
-
                             "tpk_non": format_desimal(hotel_data.get("tpk_non", 0)), "selisih_tpk_non_mtm": format_desimal(abs(hotel_data.get("tpk_non", 0) - tpk_non_lalu)),
-
-
-
                             "trend_tpk_non_mtm": get_arah_tren(hotel_data.get("tpk_non", 0) - tpk_non_lalu), "selisih_tpk_non_yoy": format_desimal(abs(hotel_data.get("tpk_non", 0) - TPK_NON_YOY)),
-
-
-
                             "trend_tpk_non_yoy": get_arah_tren(hotel_data.get("tpk_non", 0) - TPK_NON_YOY),
-
-
-
                             "rlm_total": format_desimal(hotel_data.get("rlm_total", 0)), "rlm_total_lalu": format_desimal(data_word["tabel2"]["total"]["baris_lama_2"][0]),
-
-
-
                             "selisih_rlm_total_mtm": format_desimal(abs(hotel_data.get("rlm_total", 0) - data_word["tabel2"]["total"]["baris_lama_2"][0])), "trend_rlm_total_mtm": get_arah_tren(hotel_data.get("rlm_total", 0) - data_word["tabel2"]["total"]["baris_lama_2"][0]),
-
-
-
                             "rlm_asing": format_desimal(hotel_data.get("rlm_asing", 0)), "rlm_asing_lalu": format_desimal(data_word["tabel2"]["asing"]["baris_lama_2"][0]),
-
-
-
                             "selisih_rlm_asing_mtm": format_desimal(abs(hotel_data.get("rlm_asing", 0) - data_word["tabel2"]["asing"]["baris_lama_2"][0])), "trend_rlm_asing_mtm": get_arah_tren(hotel_data.get("rlm_asing", 0) - data_word["tabel2"]["asing"]["baris_lama_2"][0]),
-
-
-
                             "rlm_nus": format_desimal(hotel_data.get("rlm_nus", 0)), "selisih_rlm_nus_mtm": format_desimal(abs(hotel_data.get("rlm_nus", 0) - data_word["tabel2"]["nusantara"]["baris_lama_2"][0])),
-
-
-
                             "trend_rlm_nus_mtm": get_arah_tren(hotel_data.get("rlm_nus", 0) - data_word["tabel2"]["nusantara"]["baris_lama_2"][0]),
-
-
-
-
-
-
-
+                            
                             "bln_1": bln_singkat[0], "bln_2": bln_singkat[1], "bln_3": bln_singkat[2],
-
-
-
                             "as_b1": format_desimal(data_word["tabel2"]["asing"]["baris_lama_1"][0]), "as_n1": format_desimal(data_word["tabel2"]["asing"]["baris_lama_1"][1]),
-
-
-
                             "as_b2": format_desimal(data_word["tabel2"]["asing"]["baris_lama_2"][0]), "as_n2": format_desimal(data_word["tabel2"]["asing"]["baris_lama_2"][1]),
-
-
-
                             "as_b3": format_desimal(hotel_data.get("rlm_asing", 0)), "as_n3": format_desimal(hotel_data.get("rlm_asing_non", 0)),
-
-
-
                             "nus_b1": format_desimal(data_word["tabel2"]["nusantara"]["baris_lama_1"][0]), "nus_n1": format_desimal(data_word["tabel2"]["nusantara"]["baris_lama_1"][1]),
-
-
-
                             "nus_b2": format_desimal(data_word["tabel2"]["nusantara"]["baris_lama_2"][0]), "nus_n2": format_desimal(data_word["tabel2"]["nusantara"]["baris_lama_2"][1]),
-
-
-
                             "nus_b3": format_desimal(hotel_data.get("rlm_nus", 0)), "nus_n3": format_desimal(hotel_data.get("rlm_nus_non", 0)),
-
-
-
                             "tot_b1": format_desimal(data_word["tabel2"]["total"]["baris_lama_1"][0]), "tot_n1": format_desimal(data_word["tabel2"]["total"]["baris_lama_1"][1]),
-
-
-
                             "tot_b2": format_desimal(data_word["tabel2"]["total"]["baris_lama_2"][0]), "tot_n2": format_desimal(data_word["tabel2"]["total"]["baris_lama_2"][1]),
-
-
-
                             "tot_b3": format_desimal(hotel_data.get("rlm_total", 0)), "tot_n3": format_desimal(hotel_data.get("rlm_total_non", 0)),
-
-
-
                             "tpk_b1": format_desimal(data_word["tabel2"]["tpk"]["baris_lama_1"][0]), "tpk_n1": format_desimal(data_word["tabel2"]["tpk"]["baris_lama_1"][1]),
-
-
-
                             "tpk_b2": format_desimal(data_word["tabel2"]["tpk"]["baris_lama_2"][0]), "tpk_n2": format_desimal(data_word["tabel2"]["tpk"]["baris_lama_2"][1]),
-
-
-
                             "tpk_b3": format_desimal(hotel_data.get("tpk_bintang", 0)), "tpk_n3": format_desimal(hotel_data.get("tpk_non", 0)),
-
-
-
                         }
 
-
-
-
-
-
-
                         # RENDER KE WORD
-
-
-
                         doc_tpl = DocxTemplate(file_template)
-
-
-
                         doc_tpl.render(context)
-
-
-
                         docx_obj = doc_tpl.docx 
 
-
-
-
-
-
-
                         tabel1_word = docx_obj.tables[0]
-
-
-
                         nama_bulan_s = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"]
-
-
-
                         headers_tabel1 = nama_bulan_s[BULAN - 1:] + ["Jan-Des"] + nama_bulan_s[:BULAN] + ["Total"]
-
-
-
                         row_header = tabel1_word.rows[1].cells[-15:] 
-
-
-
                         for col_idx in range(15): row_header[col_idx].text = headers_tabel1[col_idx]
 
-
-
-
-
-
-
                         baris_idx = 3
-
-
-
                         for key, negara in zip(top10_keys + ["lainnya"], target_negara[:-1]):
-
-
-
                             baris_baru = geser_tabel1(data_word["tabel1"][negara], wisman_data[key], BULAN)
-
-
-
                             sel_tulis = tabel1_word.rows[baris_idx].cells[-15:] 
-
-
-
                             for col_idx in range(15): sel_tulis[col_idx].text = format_ribuan(baris_baru[col_idx])
-
-
-
                             baris_idx += 1
 
-
-
-
-
-
-
                         sel_tulis = tabel1_word.rows[baris_idx].cells[-15:]
-
-
-
                         for col_idx in range(15): sel_tulis[col_idx].text = format_ribuan(baris_baru_jumlah[col_idx])
 
-
-
-
-
-
-
                         # SIMPAN KE MEMORY UNTUK FITUR DOWNLOAD BUTTON
-
-
-
                         output_stream = io.BytesIO()
-
-
-
                         doc_tpl.save(output_stream)
-
-
-
                         output_stream.seek(0)
 
-
-
-
-
-
-
                         st.success(f"🎉 Berhasil! Silakan download dokumen BRS Anda di bawah ini:")
-
-
-
                         st.download_button(
-
-
-
                             label=f"📥 Download {nama_file_baru}",
-
-
-
                             data=output_stream,
-
-
-
                             file_name=nama_file_baru,
-
-
-
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-
-
-
                             use_container_width=True
-
-
-
                         )
-
-
-
-
-
-
-
+                    
                     except Exception as e:
-
-
-
                         st.error(f"Terjadi kesalahan saat memproses data: {e}")
-
-
-
         else:
-
-
-
             st.warning("⚠️ Harap lengkapi ketiga file (Wisman, VHTS, dan BRS Lama) terlebih dahulu!")
-
-
-
-# --- DATA HISTORIS ---
-
-tampilkan_historis()
