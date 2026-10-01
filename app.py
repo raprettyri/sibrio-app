@@ -12,10 +12,6 @@ import io
 
 import os
 
-import base64
-
-
-
 # --- KONFIGURASI TAMPILAN WEB ---
 
 st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon="logobps.png", layout="wide")
@@ -185,18 +181,6 @@ div[data-baseweb="select"] > div, input[type="number"] {
 
 
 # --- HELPER FUNCTIONS ---
-
-def get_image_base64(path):
-
-    if os.path.exists(path):
-
-        with open(path, "rb") as image_file:
-
-            return base64.b64encode(image_file.read()).decode()
-
-    return ""
-
-
 
 def clean_wisman(teks):
 
@@ -576,28 +560,23 @@ _, center_col, _ = st.columns([0.5, 6, 0.5])
 with center_col:
 
     # --- HEADER: LOGO & JUDUL BERDAMPINGAN ---
+    # Logo dirender langsung oleh Streamlit agar Base64 tidak muncul sebagai teks.
+    col_logo, col_title = st.columns([1, 3])
 
-    logo_base64 = get_image_base64("logosibrio.png")
+    with col_logo:
+        if os.path.exists("logosibrio.png"):
+            st.image("logosibrio.png", width=85)
 
-    img_html = f'<img src="data:image/jpeg;base64,{logo_base64}" style="width: 85px; flex-shrink: 0; object-fit: contain;">' if logo_base64 else ''
+    with col_title:
+        st.markdown(
+            '<div class="main-title" style="text-align:left;">SIBRIO</div>',
+            unsafe_allow_html=True
+        )
 
-
-
-    html_header = f"""
-
-<div class="header-container">
-
-    {img_html}
-
-    <div class="main-title">SIBRIO</div>
-
-</div>
-
-<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>
-
-"""
-
-    st.markdown(html_header, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>',
+        unsafe_allow_html=True
+    )
 
 
 
