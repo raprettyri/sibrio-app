@@ -4,3 +4,5 @@ numpy
 python-docx
 docxtpl
 openpyxl
+gspread
+google-auth
