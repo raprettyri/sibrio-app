@@ -1,20 +1,12 @@
 import streamlit as st
-
 import pandas as pd
-
 import numpy as np
-
 import docx
-
 from docxtpl import DocxTemplate
-
 import io
-
 import os
-
 import base64
 from datetime import datetime
-
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -926,19 +918,10 @@ def geser_tabel1(data_lama_negara, data_excel_baru, bulan_sekarang):
 # --- KONTEN UTAMA (DI TENGAH LAYAR) ---
 
 _, center_col, _ = st.columns([0.5, 6, 0.5])
-
-
-
 with center_col:
-
     # --- HEADER: LOGO & JUDUL BERDAMPINGAN ---
-
     logo_base64 = get_image_base64("logosibrio.png")
-
     img_html = f'<img src="data:image/jpeg;base64,{logo_base64}" style="width: 85px; flex-shrink: 0; object-fit: contain;">' if logo_base64 else ''
-
-
-
     html_header = f"""
 
 <div class="header-container">
