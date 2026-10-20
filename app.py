@@ -768,7 +768,9 @@ def _upsert_rows(worksheet, records, key_indexes):
         _google_sheets_write_with_retry(
             worksheet.batch_update,
             updates,
-            value_input_option="USER_ENTERED",
+            # RAW mempertahankan angka float (mis. 1.93) sebagai angka,
+            # tanpa menafsirkan koma/titik mengikuti locale spreadsheet.
+            value_input_option="RAW",
         )
 
     # Semua baris baru dikirim sekaligus dalam satu permintaan API.
@@ -776,7 +778,8 @@ def _upsert_rows(worksheet, records, key_indexes):
         _google_sheets_write_with_retry(
             worksheet.append_rows,
             appends,
-            value_input_option="USER_ENTERED",
+            # RAW mencegah angka desimal ditafsirkan sebagai ribuan.
+            value_input_option="RAW",
         )
 
 
