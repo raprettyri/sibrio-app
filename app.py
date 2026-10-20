@@ -913,16 +913,6 @@ def backfill_historis_tabel2_dari_brs(doc_lama, brs_tahun, brs_bulan, data_word=
     hotel_periods, warnings = _parse_tabel2_dari_dokumen(
         doc_lama, (int(brs_tahun), int(brs_bulan))
     )
-    
-    # DEBUG: periksa hasil pembacaan Tabel 2 sebelum disimpan
-    st.write("### DEBUG — Hasil pembacaan Tabel 2")
-
-    for (tahun, bulan), values in sorted(hotel_periods.items()):
-        st.write(
-            f"{bulan:02d}/{tahun}",
-            values
-        )
-
     if warnings:
         # Jangan menghentikan seluruh proses jika sebagian warning hanya soal
         # baris yang tidak lengkap; data lengkap yang berhasil diparse tetap disimpan.
@@ -991,9 +981,31 @@ def save_historis_hotel(tahun, bulan, hotel_data):
 
 
 def _worksheet_to_dataframe(title, headers):
+    """Baca nilai asli Google Sheets tanpa mengonversi koma desimal menjadi ribuan.
+
+    get_all_records() memakai nilai yang sudah diformat mengikuti locale spreadsheet.
+    Pada locale Indonesia, angka 2.03 dapat dikembalikan sebagai teks "2,03" lalu
+    dikonversi oleh numericise menjadi 203. UNFORMATTED_VALUE mengambil nilai numerik
+    asli dari API, sehingga 2.03 tetap 2.03. Pemformatan tampilan Word dilakukan
+    terpisah oleh format_desimal().
+    """
     worksheet = get_or_create_worksheet(title, headers)
-    values = worksheet.get_all_records()
-    return pd.DataFrame(values, columns=headers) if values else pd.DataFrame(columns=headers)
+    values = worksheet.get_all_values(value_render_option="UNFORMATTED_VALUE")
+    if not values:
+        return pd.DataFrame(columns=headers)
+
+    # Gunakan header yang diharapkan oleh aplikasi agar kolom konsisten.
+    data_rows = values[1:]  # baris pertama adalah header spreadsheet
+    normalized_rows = []
+    for row in data_rows:
+        if not any(str(value).strip() for value in row):
+            continue
+        row = list(row[:len(headers)])
+        if len(row) < len(headers):
+            row.extend([""] * (len(headers) - len(row)))
+        normalized_rows.append(row)
+
+    return pd.DataFrame(normalized_rows, columns=headers)
 
 
 def get_historis_wisman(tahun_awal, bulan_awal, tahun_akhir, bulan_akhir):
