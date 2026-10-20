@@ -908,58 +908,43 @@ def backfill_historis_tabel1_dari_brs(doc_lama, brs_tahun, brs_bulan):
     return total_saved
 
 
-def backfill_historis_tabel2_dari_brs(doc_lama, brs_tahun, brs_bulan, data_word):
-    """Mengimpor periode Tabel 2 yang memang tersedia pada BRS lama.
+def backfill_historis_tabel2_dari_brs(doc_lama, brs_tahun, brs_bulan, data_word=None):
+    """Pulihkan semua periode Tabel 2 yang benar-benar tercantum di BRS lama.
 
-    Struktur existing SIBRIO menggunakan tiga periode pada Tabel 2:
-    dua bulan sebelumnya + bulan berjalan. Karena itu fungsi ini tidak
-    mengarang data bulan yang tidak terdapat di dokumen.
+    Periode dibaca dari label bulan/tahun setiap baris (mis. Okt'25, Nov'25,
+    Des'25), bukan diasumsikan berdasarkan indeks baris. Ini juga menimpa
+    record lama yang telanjur rusak untuk periode yang tersedia di dokumen.
+    Nilai desimal disimpan sebagai angka melalui _upsert_rows(..., RAW).
     """
-    # Dokumen BRS lama menampilkan tiga bulan: bulan-2, bulan-1, dan bulan.
-    # data_word['baris_lama_1'] mengambil baris kedua (bulan-1), sedangkan
-    # data_word['baris_lama_2'] mengambil baris ketiga (bulan dokumen lama).
-    # Karena itu kedua baris tersebut harus disimpan pada bulan-1 dan bulan.
-    periode1_num = int(brs_tahun) * 12 + int(brs_bulan) - 1
-    periode2_num = int(brs_tahun) * 12 + int(brs_bulan)
-    periode3_num = int(brs_tahun) * 12 + int(brs_bulan) + 1
-
-    def from_num(n):
-        # Representasi bulan dengan basis 1.
-        tahun = (n - 1) // 12
-        bulan = ((n - 1) % 12) + 1
-        return tahun, bulan
-
-    p1 = from_num(periode1_num)
-    p2 = from_num(periode2_num)
-    p3 = from_num(periode3_num)
-
-    # Nilai periode 3 diambil dari data Excel bulan berjalan BRS yang sedang
-    # dibuat. Saat fungsi ini dipanggil sebelum save bulan berjalan, p3 belum
-    # perlu disimpan di sini; fungsi utama akan melakukan save bulan berjalan.
-    # Backfill bulan-1 dan bulan dari dokumen lama; periode berikutnya
-    # (bulan yang sedang dibuat) akan disimpan dari Excel bulan berjalan.
-    periode_lama = [
-        (p1, "baris_lama_1"),
-        (p2, "baris_lama_2"),
-    ]
+    hotel_periods, warnings = _parse_tabel2_dari_dokumen(
+        doc_lama, (int(brs_tahun), int(brs_bulan))
+    )
+    if warnings:
+        # Jangan menghentikan seluruh proses jika sebagian warning hanya soal
+        # baris yang tidak lengkap; data lengkap yang berhasil diparse tetap disimpan.
+        for warning in warnings:
+            st.warning(f"Backfill Tabel 2: {warning}")
 
     jumlah_disimpan = 0
-    for (tahun, bulan), nama_baris in periode_lama:
-        hotel_data_lama = {
-            "rlm_asing": data_word["tabel2"]["asing"][nama_baris][0],
-            "rlm_asing_non": data_word["tabel2"]["asing"][nama_baris][1],
-            "rlm_nus": data_word["tabel2"]["nusantara"][nama_baris][0],
-            "rlm_nus_non": data_word["tabel2"]["nusantara"][nama_baris][1],
-            "rlm_total": data_word["tabel2"]["total"][nama_baris][0],
-            "rlm_total_non": data_word["tabel2"]["total"][nama_baris][1],
-            "tpk_bintang": data_word["tabel2"]["tpk"][nama_baris][0],
-            "tpk_non": data_word["tabel2"]["tpk"][nama_baris][1],
-        }
-        save_historis_hotel(tahun, bulan, hotel_data_lama)
+    for (tahun, bulan), values in sorted(hotel_periods.items()):
+        # Validasi kewajaran untuk mencegah angka desimal yang berubah menjadi
+        # bilangan besar akibat locale Google Sheets tersimpan kembali sebagai data valid.
+        rlm_keys = ["rlm_asing", "rlm_asing_non", "rlm_nus", "rlm_nus_non",
+                    "rlm_total", "rlm_total_non"]
+        tpk_keys = ["tpk_bintang", "tpk_non"]
+        invalid = [key for key in rlm_keys if not (0 <= float(values.get(key, -1)) <= 30)]
+        invalid += [key for key in tpk_keys if not (0 <= float(values.get(key, -1)) <= 100)]
+        if invalid:
+            st.warning(
+                f"Tabel 2 periode {get_short_bulan(bulan)} {tahun} tidak disimpan "
+                f"karena nilainya tidak wajar pada: {', '.join(invalid)}. "
+                "Periksa struktur tabel atau sumber BRS."
+            )
+            continue
+        save_historis_hotel(tahun, bulan, values)
         jumlah_disimpan += 1
 
     return jumlah_disimpan
-
 
 def backfill_historis_dari_brs(doc_lama, brs_tahun, brs_bulan, data_word):
     """Backfill histori dari BRS lama tanpa mengganggu data BRS berjalan."""
