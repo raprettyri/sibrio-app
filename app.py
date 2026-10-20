@@ -373,11 +373,23 @@ def extract_tabel1_generation(doc_lama, tahun_sumber, bulan_sumber):
     ]
     output = {}
     for target in targets:
+        
         row = next(
-            (r for r in tabel.rows
-             if _norm_key(r.cells[0].text) == _norm_key(target)),
-            None,
-        )
+            (
+                r for r in tabel.rows
+                if _norm_key(target) in {
+                _norm_key(cell.text)
+                for cell in r.cells
+            }
+        ),
+        None
+    )
+
+        # row = next(
+        #     (r for r in tabel.rows
+        #      if _norm_key(r.cells[0].text) == _norm_key(target)),
+        #     None,
+        # )
         if row is None:
             raise ValueError(f"Baris '{target}' tidak ditemukan pada Tabel 1 BRS sebelumnya.")
         numeric_cells = row.cells[-15:]
