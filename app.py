@@ -913,6 +913,16 @@ def backfill_historis_tabel2_dari_brs(doc_lama, brs_tahun, brs_bulan, data_word=
     hotel_periods, warnings = _parse_tabel2_dari_dokumen(
         doc_lama, (int(brs_tahun), int(brs_bulan))
     )
+    
+    # DEBUG: periksa hasil pembacaan Tabel 2 sebelum disimpan
+    st.write("### DEBUG — Hasil pembacaan Tabel 2")
+
+    for (tahun, bulan), values in sorted(hotel_periods.items()):
+        st.write(
+            f"{bulan:02d}/{tahun}",
+            values
+        )
+
     if warnings:
         # Jangan menghentikan seluruh proses jika sebagian warning hanya soal
         # baris yang tidak lengkap; data lengkap yang berhasil diparse tetap disimpan.
