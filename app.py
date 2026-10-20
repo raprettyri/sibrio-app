@@ -8,6 +8,9 @@ import io
 import os
 import base64
 import re
+import time
+import random
+from pathlib import Path
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
@@ -682,12 +685,12 @@ def get_or_create_worksheet(title, headers):
         worksheet = spreadsheet.worksheet(title)
     except gspread.WorksheetNotFound:
         worksheet = spreadsheet.add_worksheet(title=title, rows=1000, cols=max(10, len(headers)))
-        worksheet.append_row(headers, value_input_option="USER_ENTERED")
+        _google_sheets_write_with_retry(worksheet.append_row, headers, value_input_option="USER_ENTERED")
         return worksheet
 
     values = worksheet.get_all_values()
     if not values:
-        worksheet.append_row(headers, value_input_option="USER_ENTERED")
+        _google_sheets_write_with_retry(worksheet.append_row, headers, value_input_option="USER_ENTERED")
     elif values[0] != headers:
         # Jangan menimpa data lama. Jika header berbeda, hentikan agar struktur data tidak rusak.
         raise RuntimeError(
@@ -709,35 +712,72 @@ def _find_matching_row(values, key_indexes, key_values):
     return None
 
 
+def _google_sheets_write_with_retry(write_callable, *args, **kwargs):
+    """Jalankan penulisan Google Sheets dengan retry bertahap untuk error sementara/429."""
+    retryable_statuses = {429, 500, 502, 503, 504}
+    max_attempts = 5
+
+    for attempt in range(max_attempts):
+        try:
+            return write_callable(*args, **kwargs)
+        except gspread.exceptions.APIError as exc:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+            if status_code not in retryable_statuses or attempt == max_attempts - 1:
+                raise
+
+            # Jeda bertahap memberi waktu kuota per menit untuk pulih.
+            delay = min(60, 5 * (2 ** attempt)) + random.uniform(0, 1.5)
+            time.sleep(delay)
+
+
 def _upsert_rows(worksheet, records, key_indexes):
-    """UPSERT sederhana ke Google Sheets: update baris jika ada, append jika belum."""
+    """UPSERT dengan batch update agar satu periode tidak memicu banyak write request."""
+    if not records:
+        return
+
+    # Baca worksheet satu kali, lalu pisahkan baris yang perlu diperbarui dan ditambahkan.
     values = worksheet.get_all_values()
     updates = []
     appends = []
+    existing_keys = {}
 
+    for row_number, row in enumerate(values[1:], start=2):
+        padded = list(row) + [""] * max(0, max(key_indexes) + 1 - len(row))
+        key = tuple(str(padded[idx]).strip() for idx in key_indexes)
+        existing_keys.setdefault(key, row_number)
+
+    pending_append_keys = set()
     for record in records:
-        row_number = _find_matching_row(
-            values,
-            key_indexes,
-            [record[idx] for idx in key_indexes],
-        )
-        if row_number is None:
+        key = tuple(str(record[idx]).strip() for idx in key_indexes)
+        if key in pending_append_keys:
+            continue
+        row_number = existing_keys.get(key)
+        if row_number is None and key not in existing_keys:
             appends.append(record)
-        else:
-            updates.append((row_number, record))
+            pending_append_keys.add(key)
+        elif row_number is not None:
+            end_col = gspread.utils.rowcol_to_a1(1, len(record)).rstrip("1")
+            updates.append({
+                "range": f"A{row_number}:{end_col}{row_number}",
+                "values": [record],
+            })
 
-    # Update record yang sudah ada.
-    for row_number, record in updates:
-        end_col = len(record)
-        worksheet.update(
-            f"A{row_number}:{gspread.utils.rowcol_to_a1(row_number, end_col).rstrip('0123456789')}{row_number}",
-            [record],
+    # Semua pembaruan baris yang sudah ada dikirim sebagai SATU permintaan API.
+    if updates:
+        _google_sheets_write_with_retry(
+            worksheet.batch_update,
+            updates,
             value_input_option="USER_ENTERED",
         )
 
-    # Tambahkan record baru sekaligus.
+    # Semua baris baru dikirim sekaligus dalam satu permintaan API.
     if appends:
-        worksheet.append_rows(appends, value_input_option="USER_ENTERED")
+        _google_sheets_write_with_retry(
+            worksheet.append_rows,
+            appends,
+            value_input_option="USER_ENTERED",
+        )
 
 
 def save_historis_wisman(tahun, bulan, wisman_data):
@@ -1565,23 +1605,28 @@ def geser_tabel1(data_lama_negara, data_excel_baru, bulan_sekarang):
 _, center_col, _ = st.columns([0.5, 6, 0.5])
 with center_col:
     # --- HEADER: LOGO & JUDUL BERDAMPINGAN ---
-    logo_base64 = get_image_base64("logosibrio.png")
-    img_html = f'<img src="data:image/jpeg;base64,{logo_base64}" style="width: 85px; flex-shrink: 0; object-fit: contain;">' if logo_base64 else ''
-    html_header = f"""
+    # Gunakan st.image langsung agar PNG tidak salah dibaca sebagai JPEG/base64.
+    # Path dibuat relatif terhadap app.py supaya tetap ditemukan di Streamlit Cloud.
+    logo_path = Path(__file__).resolve().parent / "logosibrio.png"
+    header_left, header_logo_col, header_title_col, header_right = st.columns(
+        [1.2, 0.8, 1.7, 1.2]
+    )
+    with header_logo_col:
+        if logo_path.is_file():
+            st.image(str(logo_path), width=85)
+        else:
+            st.caption("Logo SIBRIO tidak ditemukan")
+    with header_title_col:
+        st.markdown(
+            '<div class="main-title" style="font-size:65px; text-align:left;">SIBRIO</div>',
+            unsafe_allow_html=True,
+        )
 
-<div class="header-container">
-
-    {img_html}
-
-    <div class="main-title">SIBRIO</div>
-
-</div>
-
-<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang<br>Cepat, Tepat, Efisien, dan Terstruktur</div>
-
-"""
-
-    st.markdown(html_header, unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-subtitle">Platform Otomatis untuk Mendukung Penyusunan Berita Resmi Statistik yang'
+        '<br>Cepat, Tepat, Efisien, dan Terstruktur</div>',
+        unsafe_allow_html=True,
+    )
 
 
 
