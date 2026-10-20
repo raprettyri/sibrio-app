@@ -380,10 +380,10 @@ def extract_tabel1_generation(doc_lama, tahun_sumber, bulan_sumber):
                 if _norm_key(target) in {
                 _norm_key(cell.text)
                 for cell in r.cells
-            }
-        ),
-        None
-    )
+                }
+            ),
+            None
+        )
 
         # row = next(
         #     (r for r in tabel.rows
