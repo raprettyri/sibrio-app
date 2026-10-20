@@ -6,178 +6,89 @@ from docxtpl import DocxTemplate
 import io
 import os
 import base64
-from datetime import datetime
-import gspread
-from google.oauth2.service_account import Credentials
-
-
 
 # --- KONFIGURASI TAMPILAN WEB ---
-
 st.set_page_config(page_title="SIBRIO - Generator BRS", page_icon="logobps.png", layout="wide")
 
-
-
 # --- INJEKSI CUSTOM CSS ---
-
 st.markdown("""
-
 <style>
-
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800;900&display=swap');
 
-
-
 /* Mengatur font global dan background hitam */
-
 .stApp {
-
     background-color: #0E1117;
-
     font-family: 'Poppins', sans-serif;
-
     color: white;
-
 }
-
-
 
 /* Menyembunyikan padding atas bawaan Streamlit */
-
 .block-container {
-
     padding-top: 2rem !important;
-
 }
-
-
 
 /* Container untuk Logo & Judul Tengah */
-
 .header-container {
-
     display: flex;
-
     justify-content: center;
-
     align-items: center;
-
     gap: 20px;
-
     margin-top: 10px;
-
 }
-
-
 
 /* Main Title SIBRIO */
-
 .main-title {
-
     color: #FF5722;
-
     font-size: 65px;
-
     font-weight: 900;
-
     letter-spacing: 3px;
-
     margin: 0;
-
     line-height: 1.1;
-
 }
-
 .main-subtitle {
-
     text-align: center;
-
     color: #E0E0E0;
-
     font-size: 16px;
-
     font-weight: 400;
-
     margin-bottom: 40px;
-
     line-height: 1.4;
-
     margin-top: 10px;
-
 }
-
-
 
 /* Label Custom Rata Tengah */
-
 .custom-label {
-
     text-align: center;
-
     font-weight: 600;
-
     font-size: 14px;
-
     color: #FAFAFA;
-
     margin-bottom: 5px;
-
 }
-
-
 
 /* Styling Tombol Generate */
-
 div.stButton > button:first-child {
-
     background-color: #FF5722 !important;
-
     color: white !important;
-
     border-radius: 8px !important;
-
     border: none !important;
-
     height: 50px !important;
-
     font-size: 16px !important;
-
     font-weight: 600 !important;
-
     width: 100%;
-
     margin-top: 10px;
-
 }
-
 div.stButton > button:first-child:hover {
-
     background-color: #E64A19 !important;
-
 }
-
-
 
 /* Styling Input Box */
-
 div[data-baseweb="select"] > div, input[type="number"] {
-
     background-color: #262730 !important;
-
     color: white !important;
-
     border-radius: 6px !important;
-
     border: 1px solid #444 !important;
-
 }
-
 </style>
-
 """, unsafe_allow_html=True)
-
-
-
 
 
 # --- HELPER FUNCTIONS ---
