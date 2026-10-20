@@ -700,23 +700,21 @@ def get_or_create_worksheet(title, headers):
     return worksheet
 
 
-def _find_matching_row(values, key_indexes, key_values):
-    """Mencari nomor baris Google Sheets berdasarkan beberapa kolom kunci."""
-    if not values:
-        return None
-    for row_number, row in enumerate(values[1:], start=2):
-        # Pad row agar aman jika ada sel kosong di ujung.
-        row = list(row) + [""] * (max(key_indexes) + 1 - len(row))
-        if all(str(row[idx]).strip() == str(value).strip() for idx, value in zip(key_indexes, key_values)):
-            return row_number
-    return None
+def _canonical_key_value(index, value):
+    """Normalisasi kunci agar tahun/bulan cocok meski Sheets mengembalikan 2025.0."""
+    text = str(value if value is not None else "").strip()
+    if index in (0, 1):
+        try:
+            return str(int(float(text)))
+        except (TypeError, ValueError):
+            return text
+    return re.sub(r"\s+", " ", text).casefold()
 
 
 def _google_sheets_write_with_retry(write_callable, *args, **kwargs):
-    """Jalankan penulisan Google Sheets dengan retry bertahap untuk error sementara/429."""
+    """Retry penulisan hanya untuk error sementara/kuota."""
     retryable_statuses = {429, 500, 502, 503, 504}
     max_attempts = 5
-
     for attempt in range(max_attempts):
         try:
             return write_callable(*args, **kwargs)
@@ -725,63 +723,59 @@ def _google_sheets_write_with_retry(write_callable, *args, **kwargs):
             status_code = getattr(response, "status_code", None)
             if status_code not in retryable_statuses or attempt == max_attempts - 1:
                 raise
-
-            # Jeda bertahap memberi waktu kuota per menit untuk pulih.
             delay = min(60, 5 * (2 ** attempt)) + random.uniform(0, 1.5)
             time.sleep(delay)
 
 
 def _upsert_rows(worksheet, records, key_indexes):
-    """UPSERT dengan batch update agar satu periode tidak memicu banyak write request."""
+    """
+    Upsert batch yang aman untuk data historis.
+    - Tahun/bulan dinormalisasi agar record lama tetap cocok.
+    - Semua baris duplikat dengan kunci yang sama ikut diperbarui agar nilai lama
+      yang rusak tidak terus muncul di tampilan.
+    - Nilai numerik dikirim sebagai RAW supaya desimal 1.93 tidak ditafsirkan ulang.
+    """
     if not records:
         return
 
-    # Baca worksheet satu kali, lalu pisahkan baris yang perlu diperbarui dan ditambahkan.
     values = worksheet.get_all_values()
-    updates = []
-    appends = []
     existing_keys = {}
-
     for row_number, row in enumerate(values[1:], start=2):
         padded = list(row) + [""] * max(0, max(key_indexes) + 1 - len(row))
-        key = tuple(str(padded[idx]).strip() for idx in key_indexes)
-        existing_keys.setdefault(key, row_number)
+        key = tuple(_canonical_key_value(idx, padded[idx]) for idx in key_indexes)
+        existing_keys.setdefault(key, []).append(row_number)
 
-    pending_append_keys = set()
+    # Record terakhir untuk kunci yang sama menjadi nilai final dalam batch ini.
+    records_by_key = {}
     for record in records:
-        key = tuple(str(record[idx]).strip() for idx in key_indexes)
-        if key in pending_append_keys:
-            continue
-        row_number = existing_keys.get(key)
-        if row_number is None and key not in existing_keys:
+        key = tuple(_canonical_key_value(idx, record[idx]) for idx in key_indexes)
+        records_by_key[key] = record
+
+    updates, appends = [], []
+    for key, record in records_by_key.items():
+        row_numbers = existing_keys.get(key, [])
+        if not row_numbers:
             appends.append(record)
-            pending_append_keys.add(key)
-        elif row_number is not None:
-            end_col = gspread.utils.rowcol_to_a1(1, len(record)).rstrip("1")
+            continue
+        end_col = gspread.utils.rowcol_to_a1(1, len(record)).rstrip("1")
+        for row_number in row_numbers:
             updates.append({
                 "range": f"A{row_number}:{end_col}{row_number}",
                 "values": [record],
             })
 
-    # Semua pembaruan baris yang sudah ada dikirim sebagai SATU permintaan API.
     if updates:
         _google_sheets_write_with_retry(
             worksheet.batch_update,
             updates,
-            # RAW mempertahankan angka float (mis. 1.93) sebagai angka,
-            # tanpa menafsirkan koma/titik mengikuti locale spreadsheet.
             value_input_option="RAW",
         )
-
-    # Semua baris baru dikirim sekaligus dalam satu permintaan API.
     if appends:
         _google_sheets_write_with_retry(
             worksheet.append_rows,
             appends,
-            # RAW mencegah angka desimal ditafsirkan sebagai ribuan.
             value_input_option="RAW",
         )
-
 
 def save_historis_wisman(tahun, bulan, wisman_data):
     """UPSERT data Wisman bulan berjalan ke Google Sheets tanpa menghapus bulan lain."""
@@ -1268,6 +1262,24 @@ def tampilkan_historis_data():
             })
 
         preview_df = pd.DataFrame(preview_rows)
+
+        # Tandai nilai yang masih tampak rusak agar tidak dianggap sebagai hasil valid.
+        bad_rlm = df_h[
+            df_h[["hotel_bintang", "akomodasi_lainnya"]].gt(30).any(axis=1)
+            & (df_h["kategori"] == "Rata-Rata Lama Menginap")
+        ]
+        bad_tpk = df_h[
+            df_h[["hotel_bintang", "akomodasi_lainnya"]].gt(100).any(axis=1)
+            & (df_h["kategori"] == "TPK")
+        ]
+        if not bad_rlm.empty or not bad_tpk.empty:
+            st.error(
+                "Ada nilai historis Hotel yang tidak wajar (RLM > 30 hari atau TPK > 100%). "
+                "Nilai tersebut kemungkinan berasal dari data lama yang sudah terlanjur salah. "
+                "Impor ulang BRS sumber melalui bagian 'Migrasi Historis dari BRS Lama' "
+                "agar periode yang tersedia ditimpa dengan angka yang benar."
+            )
+
         preview_pivot = preview_df.pivot_table(
             index=["Kategori", "Indikator", "Jenis"],
             columns="periode",
@@ -1275,7 +1287,16 @@ def tampilkan_historis_data():
             aggfunc="first"
         ).reindex(columns=periode_order).reset_index()
 
-        st.dataframe(preview_pivot.fillna(""), use_container_width=True)
+        numeric_columns = {
+            col: st.column_config.NumberColumn(col, format="%.2f")
+            for col in preview_pivot.columns
+            if col not in ("Kategori", "Indikator", "Jenis")
+        }
+        st.dataframe(
+            preview_pivot.fillna(""),
+            use_container_width=True,
+            column_config=numeric_columns,
+        )
 
     nama_awal = f"{get_short_bulan(int(bulan_awal))}{int(tahun_awal)}"
     nama_akhir = f"{get_short_bulan(int(bulan_akhir))}{int(tahun_akhir)}"
